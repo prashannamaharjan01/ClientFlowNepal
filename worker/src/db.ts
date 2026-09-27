@@ -7,6 +7,7 @@ export async function getUserByEmail(env: Env, email: string) {
         u.id,
         u.email,
         u.name,
+        u.password_hash,
         wm.role,
         w.id AS workspace_id,
         w.name AS workspace_name
