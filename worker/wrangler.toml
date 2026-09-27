@@ -9,7 +9,7 @@ ENVIRONMENT = "development"
 [[d1_databases]]
 binding = "DB"
 database_name = "clientflow-db"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "26beb5c1-8e5f-4e4c-a724-a71299573e98"
 
 [[r2_buckets]]
 binding = "FILES"
