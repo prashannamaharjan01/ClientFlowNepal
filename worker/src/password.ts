@@ -24,6 +24,13 @@ function base64ToBytes(value: string): Uint8Array {
   return bytes;
 }
 
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  ) as ArrayBuffer;
+}
+
 async function derivePasswordHash(
   password: string,
   salt: Uint8Array
@@ -39,7 +46,7 @@ async function derivePasswordHash(
   return crypto.subtle.deriveBits(
     {
       name: 'PBKDF2',
-      salt,
+      salt: toArrayBuffer(salt),
       iterations: ITERATIONS,
       hash: HASH_ALGORITHM,
     },
@@ -102,7 +109,7 @@ export async function verifyPassword(
     await crypto.subtle.deriveBits(
       {
         name: 'PBKDF2',
-        salt,
+        salt: toArrayBuffer(salt),
         iterations,
         hash: HASH_ALGORITHM,
       },
