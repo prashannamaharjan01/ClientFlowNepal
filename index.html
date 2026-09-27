@@ -98,7 +98,8 @@ const seed={clients:[
  {id:'p3',title:'Apartment walkthrough',client:'Urban Realty',status:'Revision requested',tone:'red',version:1,comment:'Please shorten the opening and make the price text larger.'},
  {id:'p4',title:'New collection teaser',client:'Maya Boutique',status:'Approved',tone:'green',version:3,comment:''}],
  invoices:[{id:'i1',client:'Kathmandu Café',amount:25000,due:'Sep 30',status:'Pending',tone:'yellow'},{id:'i2',client:'Himalayan Fitness',amount:35000,due:'Sep 12',status:'Paid',tone:'green'},{id:'i3',client:'Urban Realty',amount:18000,due:'Sep 25',status:'Overdue',tone:'red'}]};
-const saved=localStorage.getItem('clientflow_demo');
+const API_BASE='https://clientflow-api.prashannamaharjan01.workers.dev';
+  const saved=localStorage.getItem('clientflow_demo');
 const state=saved?JSON.parse(saved):seed;
 let currentView='overview';
 let authMode='login';
