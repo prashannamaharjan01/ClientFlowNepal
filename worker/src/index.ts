@@ -6,7 +6,8 @@ import {
   sessionCookie,
   clearSessionCookie,
 } from './auth';
-import { getUserByEmail } from './db';
+import { getUserByEmail, getUserById } from './db';
+import { hashPassword, verifyPassword } from './password';
 
 function json(data: unknown, status = 200, headers: HeadersInit = {}) {
   return new Response(JSON.stringify(data), {
@@ -40,6 +41,21 @@ function withCors(response: Response) {
   });
 }
 
+function publicUser(user: Record<string, unknown>) {
+  return {
+    id: String(user.id),
+    email: String(user.email),
+    name: String(user.name),
+    role: String(user.role),
+    workspaceId: String(user.workspace_id),
+    workspaceName: String(user.workspace_name),
+  };
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') {
@@ -62,18 +78,158 @@ export default {
         );
       }
 
-      if (url.pathname === '/api/auth/me' && request.method === 'GET') {
-        const user = await getSessionUser(env, request);
+      /*
+       * SIGN UP
+       */
+      if (
+        url.pathname === '/api/auth/signup' &&
+        request.method === 'POST'
+      ) {
+        const body = await request.json<{
+          name?: string;
+          workspace?: string;
+          email?: string;
+          password?: string;
+        }>();
+
+        const name = String(body.name || '').trim();
+        const workspaceName = String(body.workspace || '').trim();
+        const email = String(body.email || '').trim().toLowerCase();
+        const password = String(body.password || '');
+
+        if (!name || !workspaceName || !email || !password) {
+          return withCors(
+            json(
+              {
+                error:
+                  'Name, workspace, email and password are required',
+              },
+              400
+            )
+          );
+        }
+
+        if (name.length < 2 || name.length > 100) {
+          return withCors(
+            json(
+              { error: 'Name must be between 2 and 100 characters' },
+              400
+            )
+          );
+        }
+
+        if (
+          workspaceName.length < 2 ||
+          workspaceName.length > 120
+        ) {
+          return withCors(
+            json(
+              {
+                error:
+                  'Workspace name must be between 2 and 120 characters',
+              },
+              400
+            )
+          );
+        }
+
+        if (!isValidEmail(email)) {
+          return withCors(
+            json({ error: 'Please enter a valid email address' }, 400)
+          );
+        }
+
+        if (password.length < 8) {
+          return withCors(
+            json(
+              { error: 'Password must be at least 8 characters' },
+              400
+            )
+          );
+        }
+
+        const existingUser = await getUserByEmail(env, email);
+
+        if (existingUser) {
+          return withCors(
+            json(
+              { error: 'An account with this email already exists' },
+              409
+            )
+          );
+        }
+
+        const userId = crypto.randomUUID();
+        const workspaceId = crypto.randomUUID();
+        const passwordHash = await hashPassword(password);
+
+        try {
+          await env.DB.batch([
+            env.DB
+              .prepare(`
+                INSERT INTO users
+                  (id, email, password_hash, name)
+                VALUES (?, ?, ?, ?)
+              `)
+              .bind(userId, email, passwordHash, name),
+
+            env.DB
+              .prepare(`
+                INSERT INTO workspaces
+                  (id, name)
+                VALUES (?, ?)
+              `)
+              .bind(workspaceId, workspaceName),
+
+            env.DB
+              .prepare(`
+                INSERT INTO workspace_members
+                  (workspace_id, user_id, role)
+                VALUES (?, ?, 'owner')
+              `)
+              .bind(workspaceId, userId),
+          ]);
+        } catch (error) {
+          console.error('Signup database error:', error);
+
+          return withCors(
+            json(
+              { error: 'Unable to create the account' },
+              500
+            )
+          );
+        }
+
+        const token = await createSession(env, userId);
 
         return withCors(
-          json({
-            authenticated: Boolean(user),
-            user,
-          })
+          json(
+            {
+              message: 'Workspace created',
+              user: {
+                id: userId,
+                email,
+                name,
+                role: 'owner',
+                workspaceId,
+                workspaceName,
+              },
+            },
+            201,
+            {
+              'Set-Cookie': sessionCookie(token),
+            }
+          )
         );
       }
 
-      if (url.pathname === '/api/auth/login' && request.method === 'POST') {
+      /*
+       * LOGIN
+       */
+      if (
+        url.pathname === '/api/auth/login' &&
+        request.method === 'POST'
+      ) {
         const body = await request.json<{
           email?: string;
           password?: string;
@@ -84,7 +240,10 @@ export default {
 
         if (!email || !password) {
           return withCors(
-            json({ error: 'Email and password are required' }, 400)
+            json(
+              { error: 'Email and password are required' },
+              400
+            )
           );
         }
 
@@ -92,30 +251,72 @@ export default {
 
         if (!user) {
           return withCors(
-            json({ error: 'Invalid email or password' }, 401)
+            json(
+              { error: 'Invalid email or password' },
+              401
+            )
           );
         }
+
+        const validPassword = await verifyPassword(
+          password,
+          String(user.password_hash || '')
+        );
+
+        if (!validPassword) {
+          return withCors(
+            json(
+              { error: 'Invalid email or password' },
+              401
+            )
+          );
+        }
+
+        const token = await createSession(
+          env,
+          String(user.id)
+        );
 
         return withCors(
           json(
             {
-              message:
-                'User found. Password verification will be enabled with the production password hash field.',
-              user: {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                role: user.role,
-                workspaceId: user.workspace_id,
-                workspaceName: user.workspace_name,
-              },
+              message: 'Signed in',
+              user: publicUser(
+                user as Record<string, unknown>
+              ),
             },
-            200
+            200,
+            {
+              'Set-Cookie': sessionCookie(token),
+            }
           )
         );
       }
 
-      if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
+      /*
+       * CURRENT USER
+       */
+      if (
+        url.pathname === '/api/auth/me' &&
+        request.method === 'GET'
+      ) {
+        const user = await getSessionUser(env, request);
+
+        return withCors(
+          json({
+            authenticated: Boolean(user),
+            user,
+          })
+        );
+      }
+
+      /*
+       * LOGOUT
+       */
+      if (
+        url.pathname === '/api/auth/logout' &&
+        request.method === 'POST'
+      ) {
         await deleteSession(env, request);
 
         return withCors(
@@ -129,11 +330,19 @@ export default {
         );
       }
 
-      if (url.pathname === '/api/workspace' && request.method === 'GET') {
+      /*
+       * WORKSPACE
+       */
+      if (
+        url.pathname === '/api/workspace' &&
+        request.method === 'GET'
+      ) {
         const user = await getSessionUser(env, request);
 
         if (!user) {
-          return withCors(json({ error: 'Unauthorized' }, 401));
+          return withCors(
+            json({ error: 'Unauthorized' }, 401)
+          );
         }
 
         return withCors(
@@ -147,7 +356,9 @@ export default {
         );
       }
 
-      return withCors(json({ error: 'Not found' }, 404));
+      return withCors(
+        json({ error: 'Not found' }, 404)
+      );
     } catch (error) {
       console.error(error);
 
