@@ -1,0 +1,16 @@
+name = "clientflow-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-28"
+
+[vars]
+APP_NAME = "ClientFlow"
+ENVIRONMENT = "development"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "clientflow-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "clientflow-files"
