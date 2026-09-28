@@ -19,11 +19,19 @@ function json(data: unknown, status = 200, headers: HeadersInit = {}) {
   });
 }
 
-function corsHeaders() {
+function corsHeaders(request: Request) {
+  const origin = request.headers.get('Origin');
+  const allowedOrigin =
+    origin && origin.endsWith('.pages.dev')
+      ? origin
+      : 'https://clientflownepal.prashannamaharjan01.workers.dev';
+
   return {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
+    'Vary': 'Origin',
   };
 }
 
